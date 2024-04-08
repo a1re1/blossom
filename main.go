@@ -4,9 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
+	"path"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/huh/spinner"
@@ -35,15 +38,65 @@ func main() {
 		WithAccessible(accessible).
 		Run()
 
-	var modules []string
+	runShellScript := func(relPath string, args ...string) {
+		ex, exErr := os.Executable()
+		if exErr != nil {
+			panic(exErr)
+		}
+		exPath := filepath.Dir(ex)
+
+		if strings.Contains(exPath, "go-build") {
+			_, filename, _, _ := runtime.Caller(0)
+			exPath = path.Dir(filename)
+		}
+
+		var cmdArgs = append([]string{exPath + relPath}, args...)
+		fmt.Println("args: ", cmdArgs)
+		_, err := exec.Command("/bin/sh", cmdArgs...).Output()
+		if err != nil {
+			fmt.Printf("error %s", err)
+		}
+	}
+
+	runWithLoading := func(relPath string, args ...string) {
+		runnable := func() {
+			runShellScript(relPath, args...)
+		}
+		_ = spinner.New().Title("Generating modules...").Accessible(accessible).Action(runnable).Run()
+	}
 
 	if language == "java" {
+		var modules []string
+		var newProject bool
+		huh.NewConfirm().
+			Title("Action:").
+			Affirmative("New project").
+			Negative("Existing project").
+			Value(&newProject).
+			Run()
+
+		var groupId string
+		var artifactId string
+
+		if newProject {
+			huh.NewForm(
+				huh.NewGroup(
+					huh.NewInput().Title("groupId").Placeholder("com.tylerwhitehurst").Value(&groupId),
+					huh.NewInput().Title("artifactId").Value(&artifactId),
+				),
+			).
+				Run()
+			if len(groupId) == 0 {
+				groupId = "com.tylerwhitehurst"
+			}
+			runWithLoading("/templates/java/pom-root.sh", groupId, artifactId)
+		}
+
 		huh.NewMultiSelect[string]().
 			Title("Choose java modules").
 			Options(
-				huh.NewOption("Pom Root", "pom-root"),
-				huh.NewOption("SharedImmutables", "SharedImmutables"),
-				huh.NewOption("Sqlite", "Sqlite"),
+				huh.NewOption("Models", "models"),
+				huh.NewOption("Sql", "sql"),
 			).
 			Value(&modules).
 			Validate(func(args []string) error {
@@ -54,27 +107,42 @@ func main() {
 			}).
 			WithAccessible(accessible).
 			Run()
+
+		for _, module := range modules {
+			switch module {
+			case "shared-immutables":
+				var groupId string
+				var artifactId string
+				huh.NewInput().
+					Title("groupId").
+					Value(&groupId).
+					Placeholder("com.tylerwhitehurst").
+					Run()
+				if len(groupId) == 0 {
+					groupId = "com.tylerwhitehurst"
+				}
+				huh.NewInput().
+					Title("artifactId").
+					Value(&artifactId).
+					Run()
+				runWithLoading("/templates/java/pom-root.sh", groupId, artifactId)
+				continue
+			case "sql":
+				continue
+			}
+		}
 	}
 
-	loadTest := func() {
-		time.Sleep(2 * time.Second)
-	}
-
-	_ = spinner.New().Title("Generating modules...").Accessible(accessible).Action(loadTest).Run()
-
-	// Print order summary.
 	{
-		var sb strings.Builder
-
-		fmt.Fprintf(&sb, "Created new %s modules: %s", language, modules)
-
+		var str = "Success 🥳"
+		fmt.Println("")
 		fmt.Println(
 			lipgloss.NewStyle().
-				Width(40).
+				Width(32).
 				BorderStyle(lipgloss.RoundedBorder()).
 				BorderForeground(lipgloss.Color("63")).
 				Padding(1, 2).
-				Render(sb.String()),
+				Render(str),
 		)
 	}
 }

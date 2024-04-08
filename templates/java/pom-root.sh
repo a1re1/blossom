@@ -3,5 +3,5 @@ mvn archetype:generate \
 	-DarchetypeArtifactId=pom-root \
 	-DarchetypeVersion=RELEASE \
 	-DinteractiveMode=false \
-	-DgroupId=$0 \
-	-DartifactId=$1
+	-DgroupId=$1 \
+	-DartifactId=$2
